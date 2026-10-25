@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useProject, useSettings, go } from '../lib/store.js'
 import { prompterLines, speakSeconds, sceneSeconds, sceneStatus, fmtTime, uid, SHOT_SIZES, ANGLES, MOVES } from '../lib/model.js'
 import { SHOT_TIPS } from '../lib/templates.js'
-import { openCamera, stopStream, cameraControls, setControl, focusAt, audioMeter, listCameras, listMics, aspectRatio } from '../lib/camera.js'
+import { openCamera, stopStream, cameraControls, setControl, focusAt, audioMeter, listCameras, listMics, aspectRatio, cropRect, zoomStops } from '../lib/camera.js'
 import { startRecording, probeMedia, thumbnail } from '../lib/recorder.js'
 import { putMedia, deleteMedia, storageInfo } from '../lib/db.js'
 import { followVoice, speechSupported } from '../lib/follow.js'
@@ -136,7 +136,13 @@ export default function Shoot({ id, start }) {
   const lines = useMemo(() => prompterLines(sceneLines), [sceneLines])
   const running = phase === 'rec' || rehearse
   const ratio = project ? aspectRatio(project.aspect) : 9 / 16
-  const box = useFit(wrapRef, ratio, !!scene)
+  // Preview the whole camera frame (what the sensor really sees) and mark the
+  // part that ends up in the clip; or preview only the cropped clip area.
+  const [frame, setFrame] = useState(0)
+  const fullFrame = settings.previewFull !== false && frame > 0
+  const box = useFit(wrapRef, fullFrame ? frame : ratio, !!scene)
+  const crop = fullFrame ? cropRect(frame, ratio) : { x: 0, y: 0, w: 1, h: 1 }
+  const cropped = crop.w < 0.995 || crop.h < 0.995
   const roll = useLevel(settings.level)
 
   useWakeLock()
@@ -159,7 +165,7 @@ export default function Shoot({ id, start }) {
     let alive = true
     let s
     setCamError('')
-    openCamera({ facing, deviceId, micId, resolution: settings.resolution, fps: settings.fps, aspect: project.aspect })
+    openCamera({ facing, deviceId, micId, resolution: settings.resolution, fps: settings.fps })
       .then(async (st) => {
         if (!alive) return stopStream(st)
         s = st
@@ -176,14 +182,24 @@ export default function Shoot({ id, start }) {
       stopStream(s)
       setStream(null)
     }
-  }, [!!project, project?.aspect, facing, deviceId, micId, settings.resolution, settings.fps]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [!!project, facing, deviceId, micId, settings.resolution, settings.fps]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (videoRef.current && stream) videoRef.current.srcObject = stream
+    const v = videoRef.current
+    if (!v || !stream) return
+    v.srcObject = stream
+    // Real frame shape; changes when the phone rotates or the camera switches.
+    const measure = () => v.videoWidth && v.videoHeight && setFrame(v.videoWidth / v.videoHeight)
+    v.addEventListener('loadedmetadata', measure)
+    v.addEventListener('resize', measure)
+    return () => {
+      v.removeEventListener('loadedmetadata', measure)
+      v.removeEventListener('resize', measure)
+    }
   }, [stream])
 
   const track = stream?.getVideoTracks()[0]
-  const mirror = facing === 'user' && !deviceId
+  const mirror = facing === 'user' && !deviceId && settings.previewMirror !== false
 
   async function setVal(name, value) {
     setVals((v) => ({ ...v, [name]: value }))
@@ -363,8 +379,14 @@ export default function Shoot({ id, start }) {
     }
     const r = e.currentTarget.getBoundingClientRect()
     let x = (e.clientX - r.left) / r.width
-    const y = (e.clientY - r.top) / r.height
+    let y = (e.clientY - r.top) / r.height
     setFocusRing({ x: x * 100, y: y * 100, k: Date.now() })
+    if (!fullFrame && frame > 0) {
+      // Cropped preview: map the tap back onto the full camera frame.
+      const c = cropRect(frame, ratio)
+      x = c.x + x * c.w
+      y = c.y + y * c.h
+    }
     if (mirror) x = 1 - x
     await focusAt(track, x, y)
   }
@@ -390,34 +412,30 @@ export default function Shoot({ id, start }) {
     <div className="shoot">
       <div className="shoot-stage-wrap" ref={wrapRef}>
         <div className="stage" style={{ width: box.w, height: box.h }} onClick={onStageTap}>
-          <video ref={videoRef} className={mirror ? 'mirror' : ''} autoPlay playsInline muted />
-          {settings.grid && <div className="overlay grid-lines" />}
-          {settings.safeZone && ratio < 1 && <div className="safe-zone" />}
-          {settings.level && roll !== null && (
-            <div className={`level ${levelOk ? 'ok' : ''}`} style={{ transform: `translate(-50%, 0) rotate(${-roll}deg)` }} />
+          <video ref={videoRef} className={mirror ? 'mirror' : ''} style={{ objectFit: fullFrame ? 'contain' : 'cover' }} autoPlay playsInline muted />
+          {/* Guides live inside the area that ends up in the clip. */}
+          <div
+            className={`crop-area ${cropped ? 'cropped' : ''}`}
+            style={{ left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${crop.w * 100}%`, height: `${crop.h * 100}%` }}
+          >
+            {cropped && <span className="crop-label">ในคลิป {project.aspect}</span>}
+            {settings.grid && <div className="overlay grid-lines" />}
+            {settings.safeZone && ratio < 1 && <div className="safe-zone" />}
+            {settings.level && roll !== null && (
+              <div className={`level ${levelOk ? 'ok' : ''}`} style={{ transform: `translate(-50%, 0) rotate(${-roll}deg)` }} />
+            )}
+          </div>
+          {zoomStops(ctl?.zoom).length > 0 && (
+            <div className="zoom-stops" onClick={(e) => e.stopPropagation()}>
+              {zoomStops(ctl.zoom).map((z) => (
+                <button key={z} className={Math.abs((vals.zoom ?? ctl.zoom.value) - z) < 0.05 ? 'on' : ''} onClick={() => setVal('zoom', z)}>
+                  {z < 1 ? z.toFixed(1).replace(/^0/, '') : z}×
+                </button>
+              ))}
+            </div>
           )}
           {focusRing && <div key={focusRing.k} className="focus-ring" style={{ left: `${focusRing.x}%`, top: `${focusRing.y}%` }} />}
           <Meter stream={stream} />
-
-          {/* Teleprompter sits at the top, right under the lens. */}
-          <div
-            className={`prompter ${settings.prompterMirror ? 'mirror' : ''}`}
-            style={{ fontSize: settings.prompterSize }}
-            onClick={() => settings.prompterMode === 'manual' && advance(1)}
-          >
-            {scene.kind === 'broll' || !lines.length ? (
-              <div className="direction" style={{ fontSize: '1.1rem' }}>
-                🎥 {scene.direction || 'ถ่ายภาพประกอบ'} · {fmtTime(target)}
-              </div>
-            ) : (
-              <>
-                {lineIdx > 0 && <div className="line past">{lines[lineIdx - 1]}</div>}
-                <div className="line now">{lines[lineIdx]}</div>
-                {lines[lineIdx + 1] && <div className="line next">{lines[lineIdx + 1]}</div>}
-                {settings.prompterMode === 'voice' && running && heard && <div className="heard">🎙 {heard.slice(-40)}</div>}
-              </>
-            )}
-          </div>
 
           {phase === 'countdown' && <div className="countdown">{count}</div>}
           {camError && (
@@ -427,6 +445,26 @@ export default function Shoot({ id, start }) {
                 <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))}>ลองกล้องอีกตัว</button>
               </div>
             </div>
+          )}
+        </div>
+
+        {/* Teleprompter sits at the top, right under the lens. */}
+        <div
+          className={`prompter ${settings.prompterMirror ? 'mirror' : ''}`}
+          style={{ fontSize: settings.prompterSize }}
+          onClick={() => settings.prompterMode === 'manual' && advance(1)}
+        >
+          {scene.kind === 'broll' || !lines.length ? (
+            <div className="direction" style={{ fontSize: '1.1rem' }}>
+              🎥 {scene.direction || 'ถ่ายภาพประกอบ'} · {fmtTime(target)}
+            </div>
+          ) : (
+            <>
+              {lineIdx > 0 && <div className="line past">{lines[lineIdx - 1]}</div>}
+              <div className="line now">{lines[lineIdx]}</div>
+              {lines[lineIdx + 1] && <div className="line next">{lines[lineIdx + 1]}</div>}
+              {settings.prompterMode === 'voice' && running && heard && <div className="heard">🎙 {heard.slice(-40)}</div>}
+            </>
           )}
         </div>
 
@@ -497,6 +535,7 @@ export default function Shoot({ id, start }) {
             {ctl?.settings?.width && (
               <div className="small muted">
                 ได้จริง: {ctl.settings.width}×{ctl.settings.height} · {Math.round(ctl.settings.frameRate ?? 0)} fps
+                {cropped && ` · กรอบประคือส่วนที่อยู่ในคลิป ${project.aspect} (หมุนมือถือหรือเปลี่ยนสัดส่วนโปรเจคเพื่อใช้ภาพเต็มเฟรม)`}
               </div>
             )}
             <Slider label="ซูม" ctl={ctl?.zoom} value={vals.zoom} onChange={(v) => setVal('zoom', v)} fmt={(v) => `${(+v).toFixed(1)}x`} />
@@ -566,6 +605,8 @@ export default function Shoot({ id, start }) {
                 ['grid', 'เส้นกริด 3×3'],
                 ['level', 'วัดระดับ'],
                 ['safeZone', 'พื้นที่ปลอดภัย UI'],
+                ['previewFull', 'เห็นเต็มเฟรมกล้อง'],
+                ['previewMirror', 'กลับด้านภาพกล้องหน้า'],
                 ['prompterMirror', 'กลับด้านบท (กระจก prompter)'],
                 ['brollAutoStop', 'หยุด B-roll อัตโนมัติ'],
               ].map(([k, label]) => (

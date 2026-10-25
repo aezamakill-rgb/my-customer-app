@@ -201,3 +201,28 @@ describe('fewer app switches', async () => {
     expect(applyAiResult(p, 'research', 'ผลรีเสิร์ช').research).toBe('ผลรีเสิร์ช')
   })
 })
+
+describe('camera preview', async () => {
+  const { cropRect, zoomStops } = await import('./camera.js')
+  it('marks the part of the camera frame kept in the clip', () => {
+    // Landscape 16:9 camera, 9:16 project: a centred vertical strip.
+    const c = cropRect(16 / 9, 9 / 16)
+    expect(c.y).toBe(0)
+    expect(c.h).toBe(1)
+    expect(c.w).toBeCloseTo(0.316, 3)
+    expect(c.x).toBeCloseTo((1 - c.w) / 2, 6)
+    // Portrait 3:4 camera, 9:16 project: trim left/right a little.
+    expect(cropRect(3 / 4, 9 / 16).w).toBeCloseTo(0.75, 3)
+    // Portrait 9:16 camera, 1:1 project: a centred square.
+    expect(cropRect(9 / 16, 1)).toMatchObject({ x: 0, w: 1 })
+    expect(cropRect(9 / 16, 1).h).toBeCloseTo(0.5625, 4)
+    expect(cropRect(9 / 16, 9 / 16)).toEqual({ x: 0, y: 0, w: 1, h: 1 })
+    expect(cropRect(0, 1)).toEqual({ x: 0, y: 0, w: 1, h: 1 })
+  })
+  it('offers phone-style zoom buttons within the camera range', () => {
+    expect(zoomStops({ min: 0.5, max: 10 })).toEqual([0.5, 1, 2, 3])
+    expect(zoomStops({ min: 1, max: 2.5 })).toEqual([1, 2])
+    expect(zoomStops({ min: 1, max: 1.5 })).toEqual([])
+    expect(zoomStops(null)).toEqual([])
+  })
+})

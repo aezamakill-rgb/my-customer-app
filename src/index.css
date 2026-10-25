@@ -545,6 +545,51 @@ pre.out {
   inset: 0;
   pointer-events: none;
 }
+.crop-area {
+  position: absolute;
+  pointer-events: none;
+}
+.crop-area.cropped {
+  /* Dim what the camera sees but the clip won't keep. */
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.5);
+  outline: 1.5px dashed rgba(255, 210, 63, 0.9);
+}
+.crop-label {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--accent);
+}
+.zoom-stops {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 2;
+}
+.zoom-stops button {
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  background: rgba(30, 30, 30, 0.7);
+  border-color: transparent;
+}
+.zoom-stops button.on {
+  color: var(--accent);
+}
+
 .grid-lines {
   background-image:
     linear-gradient(to right, transparent calc(33.33% - 0.5px), rgba(255, 255, 255, 0.35) calc(33.33% - 0.5px), rgba(255, 255, 255, 0.35) calc(33.33% + 0.5px), transparent calc(33.33% + 0.5px), transparent calc(66.66% - 0.5px), rgba(255, 255, 255, 0.35) calc(66.66% - 0.5px), rgba(255, 255, 255, 0.35) calc(66.66% + 0.5px), transparent calc(66.66% + 0.5px)),
