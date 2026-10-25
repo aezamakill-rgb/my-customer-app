@@ -81,6 +81,10 @@ export const DEFAULT_SETTINGS = {
   models: { claude: 'claude-opus-5-5', openai: '', gemini: '' },
   roles: { research: 'gemini', write: 'claude', direct: 'openai' },
   oneShotProvider: 'gemini',
+  previewFull: true,
+  previewMirror: true,
+  prompterOverlay: false,
+  brollAutoStop: true,
   kincutUrl: 'https://aezamakill-rgb.github.io/kincut/',
 }
 

@@ -29,6 +29,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body,
 #root {
@@ -636,16 +640,26 @@ pre.out {
 }
 
 .prompter {
+  pointer-events: auto;
+  text-align: center;
+  overflow: hidden;
+}
+/* Default: a band above the picture, so the whole camera frame stays visible. */
+.prompter.band {
+  flex: none;
+  max-height: 32%;
+  padding: 4px 14px 10px;
+  background: #000;
+}
+/* Optional: over the top of the picture for a bigger preview. */
+.prompter.over {
   position: absolute;
   left: 0;
   right: 0;
   top: 0;
-  padding: calc(56px + var(--safe-top)) 14px 14px;
+  padding: 10px 14px 14px;
   background: linear-gradient(rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.55) 75%, transparent);
-  pointer-events: auto;
-  text-align: center;
   max-height: 52%;
-  overflow: hidden;
 }
 .prompter.mirror {
   transform: scaleX(-1);
@@ -682,12 +696,11 @@ pre.out {
 }
 
 .shoot-top {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  flex: none;
+  position: relative;
   z-index: 3;
-  padding: calc(8px + var(--safe-top)) 10px 0;
+  background: #000;
+  padding: calc(8px + var(--safe-top)) 10px 6px;
   display: flex;
   align-items: center;
   gap: 6px;

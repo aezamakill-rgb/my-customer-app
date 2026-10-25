@@ -408,8 +408,50 @@ export default function Shoot({ id, start }) {
   const done = project.scenes.filter((s) => sceneStatus(project, s) === 'done').length
   const levelOk = roll !== null && Math.abs(roll) < 1.5
 
+  // Teleprompter: a band above the picture (whole frame stays visible) or,
+  // optionally, laid over the top of the picture for a bigger preview.
+  const overlay = settings.prompterOverlay === true
+  const prompterEl = (
+    <div
+      className={`prompter ${overlay ? 'over' : 'band'} ${settings.prompterMirror ? 'mirror' : ''}`}
+      style={{ fontSize: overlay ? settings.prompterSize : Math.min(settings.prompterSize, 30) }}
+      onClick={() => settings.prompterMode === 'manual' && advance(1)}
+    >
+      {scene.kind === 'broll' || !lines.length ? (
+        <div className="direction" style={{ fontSize: '1.05rem' }}>
+          🎥 {scene.direction || 'ถ่ายภาพประกอบ'} · {fmtTime(target)}
+        </div>
+      ) : (
+        <>
+          {overlay && lineIdx > 0 && <div className="line past">{lines[lineIdx - 1]}</div>}
+          <div className="line now">{lines[lineIdx]}</div>
+          {lines[lineIdx + 1] && <div className="line next">{lines[lineIdx + 1]}</div>}
+          {settings.prompterMode === 'voice' && running && heard && <div className="heard">🎙 {heard.slice(-40)}</div>}
+        </>
+      )}
+    </div>
+  )
+  const recording = phase === 'rec' || phase === 'countdown'
+
   return (
     <div className="shoot">
+      <div className="shoot-top">
+        <button className="icon" aria-label="ออก" disabled={phase === 'rec'} onClick={() => go('p', id, 'plan', 'script')}>
+          ✕
+        </button>
+        <div className="scene-title">
+          {sceneIdx + 1}/{project.scenes.length} · {scene.title}
+        </div>
+        <span className={`pill ${phase === 'rec' ? 'rec' : ''}`} style={over ? { background: 'var(--warn)', color: '#000' } : undefined}>
+          {phase === 'rec' ? '● ' : ''}
+          {fmtTime(elapsed)} / {fmtTime(target)}
+        </span>
+        <button className="icon" aria-label="ตั้งค่ากล้อง" onClick={() => setDrawer((d) => !d)}>
+          🎛
+        </button>
+      </div>
+
+      {!overlay && prompterEl}
       <div className="shoot-stage-wrap" ref={wrapRef}>
         <div className="stage" style={{ width: box.w, height: box.h }} onClick={onStageTap}>
           <video ref={videoRef} className={mirror ? 'mirror' : ''} style={{ objectFit: fullFrame ? 'contain' : 'cover' }} autoPlay playsInline muted />
@@ -448,41 +490,7 @@ export default function Shoot({ id, start }) {
           )}
         </div>
 
-        {/* Teleprompter sits at the top, right under the lens. */}
-        <div
-          className={`prompter ${settings.prompterMirror ? 'mirror' : ''}`}
-          style={{ fontSize: settings.prompterSize }}
-          onClick={() => settings.prompterMode === 'manual' && advance(1)}
-        >
-          {scene.kind === 'broll' || !lines.length ? (
-            <div className="direction" style={{ fontSize: '1.1rem' }}>
-              🎥 {scene.direction || 'ถ่ายภาพประกอบ'} · {fmtTime(target)}
-            </div>
-          ) : (
-            <>
-              {lineIdx > 0 && <div className="line past">{lines[lineIdx - 1]}</div>}
-              <div className="line now">{lines[lineIdx]}</div>
-              {lines[lineIdx + 1] && <div className="line next">{lines[lineIdx + 1]}</div>}
-              {settings.prompterMode === 'voice' && running && heard && <div className="heard">🎙 {heard.slice(-40)}</div>}
-            </>
-          )}
-        </div>
-
-        <div className="shoot-top">
-          <button className="icon" aria-label="ออก" disabled={phase === 'rec'} onClick={() => go('p', id, 'plan', 'script')}>
-            ✕
-          </button>
-          <div className="scene-title">
-            {sceneIdx + 1}/{project.scenes.length} · {scene.title}
-          </div>
-          <span className={`pill ${phase === 'rec' ? 'rec' : ''}`} style={over ? { background: 'var(--warn)', color: '#000' } : undefined}>
-            {phase === 'rec' ? '● ' : ''}
-            {fmtTime(elapsed)} / {fmtTime(target)}
-          </span>
-          <button className="icon" aria-label="ตั้งค่ากล้อง" onClick={() => setDrawer((d) => !d)}>
-            🎛
-          </button>
-        </div>
+        {overlay && prompterEl}
 
         {drawer && (
           <div className="drawer">
@@ -607,6 +615,7 @@ export default function Shoot({ id, start }) {
                 ['safeZone', 'พื้นที่ปลอดภัย UI'],
                 ['previewFull', 'เห็นเต็มเฟรมกล้อง'],
                 ['previewMirror', 'กลับด้านภาพกล้องหน้า'],
+                ['prompterOverlay', 'บทซ้อนบนภาพ (ภาพใหญ่ขึ้น)'],
                 ['prompterMirror', 'กลับด้านบท (กระจก prompter)'],
                 ['brollAutoStop', 'หยุด B-roll อัตโนมัติ'],
               ].map(([k, label]) => (
@@ -633,7 +642,7 @@ export default function Shoot({ id, start }) {
       </div>
 
       <div className="shoot-bottom">
-        {showDirection && (
+        {showDirection && !recording && (
           <div className="small" onClick={() => setShowDirection(false)} style={{ color: '#ddd' }}>
             🎬 <b>{scene.shot.size}</b> {SHOT_SIZES[scene.shot.size]?.split(' (')[0]} · {ANGLES[scene.shot.angle]} · {MOVES[scene.shot.move]} · กล้อง
             {scene.shot.camera === 'back' ? 'หลัง' : 'หน้า'}
@@ -641,7 +650,7 @@ export default function Shoot({ id, start }) {
             <span className="muted"> · {SHOT_TIPS[scene.shot.size]}</span>
           </div>
         )}
-        <div className="scene-strip">
+        <div className="scene-strip" hidden={recording}>
           {project.scenes.map((s, i) => {
             const st = sceneStatus(project, s)
             return (
@@ -697,7 +706,7 @@ export default function Shoot({ id, start }) {
             </button>
           </div>
         </div>
-        <div className="row small muted" style={{ justifyContent: 'space-between' }}>
+        <div className="row small muted" style={{ justifyContent: 'space-between' }} hidden={recording}>
           <span>
             ถ่ายแล้ว {done}/{project.scenes.length} ฉาก · {project.takes.filter((t) => t.sceneId === scene.id).length} เทคในฉากนี้
           </span>
