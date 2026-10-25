@@ -22,6 +22,12 @@ export default defineConfig({
         background_color: '#0e0f13',
         theme_color: '#0e0f13',
         categories: ['photo', 'productivity'],
+        // Android: share an AI answer from Gemini/ChatGPT/Claude straight into KinShot.
+        share_target: {
+          action: './',
+          method: 'GET',
+          params: { title: 'share_title', text: 'share_text', url: 'share_url' },
+        },
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },

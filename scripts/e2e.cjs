@@ -32,7 +32,7 @@ function serve(port) {
   const server = await serve(port)
   const origin = `http://localhost:${port}`
   const browser = await chromium.launch({ args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'] })
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, permissions: ['camera', 'microphone'] })
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, permissions: ['camera', 'microphone', 'clipboard-read', 'clipboard-write'] })
   await ctx.addInitScript((kincutUrl) => {
     if (location.pathname.startsWith('/kinshot/') && !localStorage.getItem('kinshot.settings'))
       localStorage.setItem('kinshot.settings', JSON.stringify({ countdown: 0, kincutUrl }))
@@ -53,19 +53,28 @@ function serve(port) {
   await page.getByText('บท & ช็อต').first().waitFor()
   await shot('02-script')
 
-  step('team tab (paste mode)')
+  step('team tab: one-shot send → resume → auto pick-up from clipboard')
   await page.getByRole('tab', { name: /ทีม AI/ }).click()
-  await page.getByText('คัดลอก prompt').first().waitFor()
-  // Paste a fake AI answer into the "write" step to exercise parsing.
-  const answer = 'ได้เลยครับ\n```json\n' + JSON.stringify({ title: 'หูฟังไร้สาย รุ่น X', hook_options: ['หูฟังพันบาทที่เสียงดีกว่าหมื่น?'], scenes: [
+  const popup = ctx.waitForEvent('page')
+  await page.getByRole('button', { name: /ส่งให้ Gemini/ }).first().click()
+  await (await popup).close()
+  await page.getByText(/รอคำตอบจาก Gemini/).waitFor()
+  const copied = await page.evaluate(() => navigator.clipboard.readText())
+  if (!copied.includes('นักรีเสิร์ช')) throw new Error('prompt was not copied')
+  await shot('03-waiting')
+  // The phone closed KinShot while the user was in the AI app: a fresh launch resumes the waiting step.
+  const relaunch = await ctx.newPage()
+  await relaunch.goto(`${origin}/kinshot/`)
+  await relaunch.getByText(/รอคำตอบจาก Gemini/).waitFor()
+  await relaunch.close()
+  const answer = 'ได้เลยครับ\n```json\n' + JSON.stringify({ title: 'หูฟัง X ใช้จริง 7 วัน', research: 'สรุปรีเสิร์ช', hook_options: ['หูฟังพันบาทที่เสียงดีกว่าหมื่น?'], scenes: [
     { title: 'Hook', kind: 'talk', lines: ['หูฟังพันบาท', 'เสียงดีกว่าหมื่นจริงไหม'], shot: { size: 'CU', angle: 'eye', move: 'pushin', camera: 'front' }, direction: 'ถือหูฟังข้างหน้า' },
     { title: 'แกะกล่อง', kind: 'broll', lines: [], shot: { size: 'TOP', angle: 'high', move: 'static', camera: 'back' }, direction: 'แกะกล่องช้าๆ', seconds: 2 },
   ], caption: 'ใช้จริง 7 วัน', hashtags: ['#รีวิว'], notes: ['ใส่เสียงว้าวตอนเปิดกล่อง'] }) + '\n```'
-  await page.getByPlaceholder(/วางคำตอบจาก/).nth(1).fill(answer)
-  page.once('dialog', (d) => d.accept())
-  await page.getByRole('button', { name: 'ใช้บทนี้' }).first().click()
-  await page.getByText('ดูบท & ช็อต (2 ฉาก)').waitFor()
-  await shot('03-team')
+  await page.evaluate((t) => navigator.clipboard.writeText(t), answer)
+  await page.evaluate(() => dispatchEvent(new Event('focus')))
+  await page.getByText('ทางเลือก Hook').waitFor()
+  await shot('03-team-applied')
 
   step('shoot scene 1')
   await page.getByRole('button', { name: '🎥 เริ่มถ่าย' }).click()

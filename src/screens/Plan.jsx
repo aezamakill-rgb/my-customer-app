@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useProject, useSettings, go } from '../lib/store.js'
 import {
   PLATFORMS,
@@ -7,7 +7,6 @@ import {
   ANGLES,
   MOVES,
   newScene,
-  normalizeScenes,
   sceneSeconds,
   totalSeconds,
   fmtTime,
@@ -15,11 +14,12 @@ import {
   prompterLines,
 } from '../lib/model.js'
 import { PRESHOOT_CHECKLIST, SHOT_TIPS } from '../lib/templates.js'
-import { ROLES, PROVIDERS, researchPrompt, writePrompt, directPrompt, scriptToJson, asPaste } from '../lib/ai/prompts.js'
-import { extractJson } from '../lib/ai/parse.js'
+import { ROLES, PROVIDERS, researchPrompt, writePrompt, directPrompt, teamPrompt, scriptToJson, asPaste } from '../lib/ai/prompts.js'
+import { applyAiResult, replacesScenes } from '../lib/ai/apply.js'
+import { sendToApp, readClipboard, setPending, getPending, takeIncoming } from '../lib/handoff.js'
 import { callProvider, providerFor, readyProviders } from '../lib/ai/providers.js'
 import { BackButton } from '../components/ui.jsx'
-import { copyText, toast } from '../lib/notify.js'
+import { toast } from '../lib/notify.js'
 
 const TABS = [
   ['brief', '📝 บรีฟ'],
@@ -99,60 +99,79 @@ function Brief({ project, update }) {
   )
 }
 
+const PROMPTS = {
+  oneshot: (p) => teamPrompt(p),
+  research: (p) => researchPrompt(p),
+  write: (p) => writePrompt(p, p.research),
+  direct: (p) => directPrompt(p, scriptToJson(p)),
+}
+
+const ONESHOT = { name: 'รอบเดียวจบ', emoji: '⚡', job: 'AI ตัวเดียวทำครบ: รีเสิร์ช → เขียนบท → กำกับ สลับแอปแค่ครั้งเดียว' }
+
+/** Send / paste-back controls for one AI step in copy-paste mode. */
+function PasteControls({ role, provider, disabled, manual, onSend, onPaste, onManual, onManualApply }) {
+  const [text, setText] = useState('')
+  const name = PROVIDERS[provider].name
+  return (
+    <>
+      <div className="row">
+        <button className="grow" disabled={disabled} onClick={onSend}>
+          📤 ส่งให้ {name}
+        </button>
+        <button className="primary grow" disabled={disabled} onClick={onPaste}>
+          📋 วางคำตอบ
+        </button>
+      </div>
+      {manual ? (
+        <>
+          <textarea autoFocus placeholder={`แตะค้างแล้วเลือก “วาง” คำตอบจาก ${name}`} value={text} onChange={(e) => setText(e.target.value)} />
+          <button className="primary" disabled={!text.trim()} onClick={() => onManualApply(text)}>
+            {role === 'research' ? 'บันทึกผลรีเสิร์ช' : 'ใช้บทนี้'}
+          </button>
+        </>
+      ) : (
+        <button className="ghost small" onClick={onManual}>
+          วางเองในช่องข้อความ
+        </button>
+      )}
+    </>
+  )
+}
+
 function Team({ project, update }) {
   const [settings, setSettings] = useSettings()
   const [busy, setBusy] = useState(null)
   const [error, setError] = useState('')
-  const [pasted, setPasted] = useState({})
+  const [manual, setManual] = useState(null)
+  const [pending, setPendingState] = useState(() => {
+    const p = getPending()
+    return p?.projectId === project.id ? p : null
+  })
   const abort = useRef(null)
   const api = settings.aiMode === 'api'
   const ready = readyProviders(settings)
-
-  const steps = [
-    { role: 'research', build: (p) => researchPrompt(p), json: false },
-    { role: 'write', build: (p) => writePrompt(p, p.research), json: true },
-    { role: 'direct', build: (p) => directPrompt(p, scriptToJson(p)), json: true },
-  ]
-
-  /** Apply one step's output; returns the next project state. */
-  function apply(role, p, text, meta = {}) {
-    const ai = { ...p.ai, [role]: { text, by: meta.by, model: meta.model, sources: meta.sources, at: Date.now() } }
-    if (role === 'research') return { ...p, research: text, ai }
-    const json = extractJson(text)
-    const scenes = normalizeScenes(json)
-    if (!scenes.length) throw new Error('อ่านบทจากคำตอบไม่ได้ — ต้องเป็น JSON ที่มี "scenes" (ลองคัดลอกคำตอบทั้งหมดอีกครั้ง)')
-    return {
-      ...p,
-      ai,
-      scenes,
-      name: p.name === 'คอนเทนต์ใหม่' && json.title ? String(json.title).slice(0, 80) : p.name,
-      hookOptions: Array.isArray(json.hook_options) ? json.hook_options.map(String) : p.hookOptions,
-      caption: typeof json.caption === 'string' ? json.caption : p.caption,
-      hashtags: Array.isArray(json.hashtags) ? json.hashtags.map(String) : p.hashtags,
-      editNotes: Array.isArray(json.notes) ? json.notes.map(String) : p.editNotes,
-    }
-  }
+  const steps = ['research', 'write', 'direct']
+  const providerOf = (role) => (role === 'oneshot' ? settings.oneShotProvider ?? 'gemini' : settings.roles[role])
 
   const confirmReplace = (role) =>
-    role === 'research' || !project.takes.length || confirm('บทใหม่จะแทนที่ฉากเดิม เทคที่ถ่ายไว้จะไม่ผูกกับฉากใหม่ (ยังอยู่ในแบ็กอัป) ทำต่อ?')
+    !replacesScenes(role) || !project.takes.length || confirm('บทใหม่จะแทนที่ฉากเดิม เทคที่ถ่ายไว้จะไม่ผูกกับฉากใหม่ (ยังอยู่ในแบ็กอัป) ทำต่อ?')
 
-  async function runApi(indices) {
-    if (!confirmReplace(indices.length > 1 ? 'all' : steps[indices[0]].role)) return
+  async function runApi(roles) {
+    if (!confirmReplace(roles.length > 1 ? 'all' : roles[0])) return
     setError('')
     abort.current = new AbortController()
     let p = project
     try {
-      for (const i of indices) {
-        const step = steps[i]
-        const provider = providerFor(step.role, settings)
+      for (const role of roles) {
+        const provider = providerFor(role, settings)
         if (!provider) throw new Error('ยังไม่มี API key — ไปที่ ⚙️ ตั้งค่า หรือใช้โหมดคัดลอก/วาง')
-        setBusy(step.role)
-        const res = await callProvider(provider, settings, step.build(p), {
-          json: step.json,
-          research: step.role === 'research',
+        setBusy(role)
+        const res = await callProvider(provider, settings, PROMPTS[role](p), {
+          json: role !== 'research',
+          research: role === 'research',
           signal: abort.current.signal,
         })
-        p = apply(step.role, p, res.text, { by: provider, model: res.model, sources: res.sources })
+        p = applyAiResult(p, role, res.text, { by: provider, model: res.model, sources: res.sources })
         update(p)
       }
       toast('ทีม AI ทำเสร็จแล้ว ✓')
@@ -163,26 +182,191 @@ function Team({ project, update }) {
     }
   }
 
-  function applyPasted(i) {
-    const role = steps[i].role
-    if (!confirmReplace(role)) return
+  function markPending(p) {
+    setPending(p)
+    setPendingState(p)
+  }
+
+  async function send(role) {
+    setError('')
+    const provider = providerOf(role)
+    markPending({ projectId: project.id, role, provider })
+    const how = await sendToApp(asPaste(PROMPTS[role](project)), PROVIDERS[provider].app)
+    if (how === 'shared') toast(`เลือกแอป ${PROVIDERS[provider].name} ในเมนูแชร์ → ส่ง → คัดลอกคำตอบแล้วกลับมาแตะ “วางคำตอบ”`, 5000)
+    else if (how === 'opened') toast('คัดลอก prompt แล้ว วางในแอป AI ได้เลย', 4000)
+  }
+
+  /** Apply an answer; `quiet` = automatic attempt, stay silent if it isn't one. */
+  function accept(role, text, { quiet = false } = {}) {
+    let next
     try {
-      update(apply(role, project, pasted[role] ?? '', { by: settings.roles[role] }))
-      setPasted((s) => ({ ...s, [role]: '' }))
-      setError('')
-      toast(role === 'research' ? 'บันทึกผลรีเสิร์ชแล้ว' : 'ใช้บทนี้แล้ว ดูที่แท็บ “บท & ช็อต”')
+      next = applyAiResult(project, role, text, { by: providerOf(role) })
     } catch (e) {
-      setError(e.message)
+      if (!quiet) setError(e.message)
+      return false
     }
+    if (!confirmReplace(role)) return false
+    update(next)
+    markPending(null)
+    setManual(null)
+    setError('')
+    if (role === 'research') toast('บันทึกผลรีเสิร์ชแล้ว ✓ ต่อขั้นที่ 2 ได้เลย')
+    else if (role === 'write') toast('ได้บทแล้ว ✓ ส่งให้ผู้กำกับตรวจต่อ (ขั้นที่ 3) หรือไปดูบทได้เลย')
+    else {
+      toast(`ได้บทแล้ว ${next.scenes.length} ฉาก ✓`)
+      go('p', project.id, 'plan', 'script')
+    }
+    return true
+  }
+
+  async function pasteFromClipboard(role) {
+    const text = await readClipboard()
+    if (text === null) {
+      setManual(role)
+      setError('เบราว์เซอร์นี้ไม่ให้อ่านคลิปบอร์ด — แตะค้างในช่องด้านล่างแล้วเลือก “วาง”')
+      return
+    }
+    accept(role, text)
+  }
+
+  // Coming back from the AI app: pick the answer up automatically where the
+  // browser allows (Android Chrome after the first "allow"), or from a share.
+  const pendingRef = useRef(pending)
+  pendingRef.current = pending
+  const acceptRef = useRef(accept)
+  acceptRef.current = accept
+  useEffect(() => {
+    const incoming = takeIncoming()
+    if (incoming && pendingRef.current) acceptRef.current(pendingRef.current.role, incoming)
+    let last = ''
+    const onReturn = async () => {
+      if (document.visibilityState !== 'visible' || !pendingRef.current) return
+      const text = await readClipboard({ quiet: true })
+      if (!text || text === last) return
+      last = text
+      acceptRef.current(pendingRef.current.role, text, { quiet: true })
+    }
+    addEventListener('focus', onReturn)
+    document.addEventListener('visibilitychange', onReturn)
+    return () => {
+      removeEventListener('focus', onReturn)
+      document.removeEventListener('visibilitychange', onReturn)
+    }
+  }, [])
+
+  const roleInfo = (role) => (role === 'oneshot' ? ONESHOT : ROLES[role])
+  const providerSelect = (role) => (
+    <select
+      aria-label="AI ที่รับงานนี้"
+      style={{ width: 'auto' }}
+      value={providerOf(role)}
+      onChange={(e) =>
+        role === 'oneshot'
+          ? setSettings({ oneShotProvider: e.target.value })
+          : setSettings((s) => ({ roles: { ...s.roles, [role]: e.target.value } }))
+      }
+    >
+      {Object.entries(PROVIDERS).map(([id, p]) => (
+        <option key={id} value={id}>
+          {p.name}
+        </option>
+      ))}
+    </select>
+  )
+
+  const doneChips = (role) => {
+    const done = project.ai?.[role]
+    return (
+      done && (
+        <div className="chips">
+          <span className="chip ok">✓ เสร็จแล้ว</span>
+          {done.by && <span className={`chip ${done.by}`}>{PROVIDERS[done.by]?.name}</span>}
+          {done.model && <span className="chip">{done.model}</span>}
+        </div>
+      )
+    )
+  }
+
+  const pasteFor = (role, disabled = false) => (
+    <PasteControls
+      key={`${role}-${manual === role}`}
+      role={role}
+      provider={providerOf(role)}
+      disabled={disabled}
+      manual={manual === role}
+      onSend={() => send(role)}
+      onPaste={() => pasteFromClipboard(role)}
+      onManual={() => setManual(role)}
+      onManualApply={(t) => accept(role, t)}
+    />
+  )
+
+  const stepCard = (role, i) => {
+    const info = ROLES[role]
+    const provider = api ? (providerFor(role, settings) ?? settings.roles[role]) : settings.roles[role]
+    const needsScript = role === 'direct' && !project.scenes.length
+    return (
+      <div key={role} className={`card stack step ${provider}`}>
+        <div className="row">
+          <strong className="grow">
+            {i + 1}. {info.emoji} {info.name}
+          </strong>
+          {providerSelect(role)}
+        </div>
+        <div className="small muted">{info.job}</div>
+        {doneChips(role)}
+        {role === 'write' && !project.research && <div className="small muted">ข้ามขั้นรีเสิร์ชได้ แต่บทจะแม่นขึ้นถ้ามีข้อมูล</div>}
+        {needsScript && <div className="small muted">ต้องมีบทก่อน (ขั้นที่ 2 หรือโครงสำเร็จรูป)</div>}
+        {api ? (
+          <button disabled={!!busy || needsScript} onClick={() => runApi([role])}>
+            {busy === role ? 'กำลังทำ…' : project.ai?.[role] ? 'ทำขั้นนี้ใหม่' : 'รันขั้นนี้'}
+          </button>
+        ) : (
+          pasteFor(role, needsScript)
+        )}
+        {role === 'research' && project.research && (
+          <details>
+            <summary className="small">ผลรีเสิร์ช</summary>
+            <pre className="out">{project.research}</pre>
+            {project.ai?.research?.sources?.length > 0 && (
+              <ul className="small">
+                {project.ai.research.sources.slice(0, 12).map((s, k) => (
+                  <li key={k}>
+                    <a href={s.url} target="_blank" rel="noreferrer">
+                      {s.title || s.url}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </details>
+        )}
+      </div>
+    )
   }
 
   return (
     <div className="team">
+      {pending && !api && (
+        <div className="card stack notice">
+          <strong>
+            ⏳ รอคำตอบจาก {PROVIDERS[pending.provider]?.name} · {roleInfo(pending.role).emoji} {roleInfo(pending.role).name}
+          </strong>
+          <div className="small">คัดลอกคำตอบทั้งหมดในแอป AI แล้วกลับมาแตะปุ่มนี้</div>
+          <button className="primary big" onClick={() => pasteFromClipboard(pending.role)}>
+            📋 วางคำตอบ
+          </button>
+          <button className="ghost small" onClick={() => markPending(null)}>
+            ยกเลิกการรอ
+          </button>
+        </div>
+      )}
+
       <div className="card stack">
         <div className="row">
-          <strong className="grow">วิธีทำงานกับ AI</strong>
+          <strong className="grow">โหมด AI</strong>
           <button className={!api ? 'on' : ''} onClick={() => setSettings({ aiMode: 'paste' })}>
-            คัดลอก/วาง (ฟรี)
+            ใช้แอป AI (ฟรี)
           </button>
           <button className={api ? 'on' : ''} onClick={() => setSettings({ aiMode: 'api' })}>
             API อัตโนมัติ
@@ -191,12 +375,12 @@ function Team({ project, update }) {
         <div className="small muted">
           {api
             ? ready.length
-              ? `พร้อมใช้: ${ready.map((p) => PROVIDERS[p].name).join(' · ')} — บทบาทไหนไม่มี key จะใช้ AI ตัวที่มี key แทน`
+              ? `พร้อมใช้: ${ready.map((p) => PROVIDERS[p].name).join(' · ')} — ไม่ต้องสลับแอปเลย บทบาทไหนไม่มี key จะใช้ AI ตัวที่มี key แทน`
               : 'ยังไม่มี API key — ใส่ได้ที่ ⚙️ ตั้งค่า (key เก็บในเครื่องนี้เท่านั้น)'
-            : 'กด “คัดลอก prompt” → เปิดแอป AI → วาง → คัดลอกคำตอบทั้งหมดกลับมาวางที่นี่ ใช้บัญชีฟรีของแต่ละแอปได้'}
+            : '“ส่งให้” เปิดเมนูแชร์ แตะแอป AI แล้ว prompt เข้าไปเอง → คัดลอกคำตอบ → กลับมาแตะ “วางคำตอบ”'}
         </div>
         {api && (
-          <button className="primary big" disabled={!!busy || !ready.length} onClick={() => runApi([0, 1, 2])}>
+          <button className="primary big" disabled={!!busy || !ready.length} onClick={() => runApi(steps)}>
             {busy ? `กำลังทำงาน: ${ROLES[busy].name}…` : '🚀 ให้ทีม AI ทำครบ 3 ขั้นอัตโนมัติ'}
           </button>
         )}
@@ -208,84 +392,31 @@ function Team({ project, update }) {
         {error && <div className="notice err">{error}</div>}
       </div>
 
-      {steps.map((step, i) => {
-        const role = ROLES[step.role]
-        const provider = api ? (providerFor(step.role, settings) ?? settings.roles[step.role]) : settings.roles[step.role]
-        const done = project.ai?.[step.role]
-        const prompt = asPaste(step.build(project))
-        return (
-          <div key={step.role} className={`card stack step ${provider}`}>
+      {api ? (
+        steps.map(stepCard)
+      ) : (
+        <>
+          <div className={`card stack step ${providerOf('oneshot')}`}>
             <div className="row">
               <strong className="grow">
-                {i + 1}. {role.emoji} {role.name}
+                {ONESHOT.emoji} {ONESHOT.name} <span className="chip ok">แนะนำ</span>
               </strong>
-              <select
-                aria-label="AI ที่รับบทนี้"
-                style={{ width: 'auto' }}
-                value={settings.roles[step.role]}
-                onChange={(e) => setSettings((s) => ({ roles: { ...s.roles, [step.role]: e.target.value } }))}
-              >
-                {Object.entries(PROVIDERS).map(([id, p]) => (
-                  <option key={id} value={id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              {providerSelect('oneshot')}
             </div>
-            <div className="small muted">{role.job}</div>
-            {done && (
-              <div className="chips">
-                <span className={`chip ok`}>✓ เสร็จแล้ว</span>
-                {done.by && <span className={`chip ${done.by}`}>{PROVIDERS[done.by]?.name}</span>}
-                {done.model && <span className="chip">{done.model}</span>}
-              </div>
-            )}
-            {step.role === 'write' && !project.research && <div className="small muted">ข้ามขั้นรีเสิร์ชได้ แต่บทจะแม่นขึ้นถ้ามีข้อมูล</div>}
-            {step.role === 'direct' && !project.scenes.length && <div className="small muted">ต้องมีบทก่อน (ขั้นที่ 2 หรือโครงสำเร็จรูป)</div>}
-            {api ? (
-              <button disabled={!!busy || (step.role === 'direct' && !project.scenes.length)} onClick={() => runApi([i])}>
-                {busy === step.role ? 'กำลังทำ…' : done ? 'ทำขั้นนี้ใหม่' : 'รันขั้นนี้'}
-              </button>
-            ) : (
-              <>
-                <div className="row">
-                  <button disabled={step.role === 'direct' && !project.scenes.length} onClick={() => copyText(prompt)}>
-                    📋 คัดลอก prompt
-                  </button>
-                  <a className="btn" href={PROVIDERS[provider].app} target="_blank" rel="noreferrer">
-                    เปิด {PROVIDERS[provider].name} ↗
-                  </a>
-                </div>
-                <textarea
-                  placeholder={`วางคำตอบจาก ${PROVIDERS[provider].name} ที่นี่`}
-                  value={pasted[step.role] ?? ''}
-                  onChange={(e) => setPasted((s) => ({ ...s, [step.role]: e.target.value }))}
-                />
-                <button className="primary" disabled={!pasted[step.role]?.trim()} onClick={() => applyPasted(i)}>
-                  {step.role === 'research' ? 'บันทึกผลรีเสิร์ช' : 'ใช้บทนี้'}
-                </button>
-              </>
-            )}
-            {step.role === 'research' && project.research && (
-              <details>
-                <summary className="small">ผลรีเสิร์ช</summary>
-                <pre className="out">{project.research}</pre>
-                {project.ai?.research?.sources?.length > 0 && (
-                  <ul className="small">
-                    {project.ai.research.sources.slice(0, 12).map((s, k) => (
-                      <li key={k}>
-                        <a href={s.url} target="_blank" rel="noreferrer">
-                          {s.title || s.url}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </details>
-            )}
+            <div className="small muted">{ONESHOT.job}</div>
+            {doneChips('oneshot')}
+            {pasteFor('oneshot')}
           </div>
-        )
-      })}
+          <details className="card" open={['research', 'write', 'direct'].includes(pending?.role) || undefined}>
+            <summary>
+              <strong>🤝 แบบ 3 AI ช่วยกัน</strong> <span className="small muted">— ละเอียดกว่า สลับแอป 3 ครั้ง</span>
+            </summary>
+            <div className="team" style={{ marginTop: 12 }}>
+              {steps.map(stepCard)}
+            </div>
+          </details>
+        </>
+      )}
 
       {project.scenes.length > 0 && (
         <a className="btn primary" href={`#/p/${project.id}/plan/script`}>

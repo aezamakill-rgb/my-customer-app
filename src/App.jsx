@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react'
-import { useRoute } from './lib/store.js'
+import { useRoute, go } from './lib/store.js'
+import { takeSharedLaunch, getPending } from './lib/handoff.js'
 import { Toaster } from './components/ui.jsx'
 import Home from './screens/Home.jsx'
 
@@ -8,6 +9,21 @@ const Shoot = lazy(() => import('./screens/Shoot.jsx'))
 const Wrap = lazy(() => import('./screens/Wrap.jsx'))
 const Settings = lazy(() => import('./screens/Settings.jsx'))
 const Guide = lazy(() => import('./screens/Guide.jsx'))
+
+// Back from an AI app: if the phone closed KinShot meanwhile, or an answer
+// was shared in, reopen the project that is waiting for it.
+const shared = takeSharedLaunch()
+const pending = getPending()
+let resumed = false
+try {
+  resumed = sessionStorage.getItem('kinshot.resumed') === '1'
+  sessionStorage.setItem('kinshot.resumed', '1')
+} catch {
+  /* ignore */
+}
+if (pending && (shared || (!resumed && !location.hash.replace(/^#\/?/, '')))) {
+  go('p', pending.projectId, 'plan', 'team')
+}
 
 function Screen() {
   const [a, id, b, c] = useRoute()

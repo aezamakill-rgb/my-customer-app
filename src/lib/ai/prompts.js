@@ -110,5 +110,22 @@ export function directPrompt(project, scriptJson) {
   }
 }
 
+/**
+ * One prompt that runs the whole team in a single chat, so the user only
+ * switches apps once: research → write → direct → final JSON.
+ */
+export function teamPrompt(project) {
+  return {
+    system:
+      'คุณคือทีมผลิตคอนเทนต์สั้นมืออาชีพ 3 คนในคนเดียว: นักรีเสิร์ช นักเขียนบท และผู้กำกับ ทำงานทีละบทบาทในใจ แล้วส่งงานฉบับสุดท้ายเป็น JSON อย่างเดียว',
+    user: `ทำบทถ่ายทำพร้อม shot list สำหรับคลิปนี้ให้เสร็จในรอบเดียว\n\n${brief(project)}\n\nขั้นตอน:\n1. นักรีเสิร์ช: ค้นข้อมูลจริงและเป็นปัจจุบัน (ใช้การค้นเว็บถ้าทำได้) insight กลุ่มเป้าหมาย เทรนด์ ไอเดีย hook ห้ามแต่งตัวเลขเอง\n2. นักเขียนบท: เขียนบทภาษาพูดที่อ่านจาก teleprompter ได้ บรรทัดละ 1 ลมหายใจ hook 3 วินาทีแรกต้องหยุดคนเลื่อน (ห้ามขึ้นต้นด้วย "สวัสดี") ความยาวรวมใกล้ ${project.targetSeconds} วินาที (~2.8 คำ/วินาที) สลับช็อตพูด (talk) กับภาพประกอบ (broll) broll ไม่มี lines แต่ direction ต้องบอกชัดว่าถ่ายอะไร camera: "front" = กล้องหน้า, "back" = กล้องหลัง ปิดด้วย CTA\n3. ผู้กำกับ: ตรวจบทอีกรอบ ขัด hook ตัดคำฟุ่มเฟือย มุมกล้องไม่ซ้ำติดกันเกิน 2 ฉาก ใส่ direction ทุกฉาก และ notes สำหรับตอนตัดต่อ\n\nตอบเป็น JSON ฉบับสุดท้ายตามโครงนี้เท่านั้น (เพิ่มฟิลด์ "research" เป็นสรุปผลรีเสิร์ชสั้นๆ พร้อมแหล่งที่มา) ห้ามมีข้อความอื่น:\n${SCHEMA.replace('{\n', '{\n  "research": "สรุปผลรีเสิร์ช + แหล่งที่มา",\n')}`,
+  }
+}
+
+// Text that only appears in our own prompts: if the clipboard still holds
+// one of these, the user copied the prompt back instead of the answer.
+const PROMPT_MARKERS = ['ชื่อฉากสั้นๆ เช่น Hook', 'ช่วยรีเสิร์ชก่อนเขียนบทคลิปนี้', 'เช็กลิสต์ผู้กำกับ:']
+export const isOwnPrompt = (text) => PROMPT_MARKERS.some((m) => text.includes(m))
+
 /** Single-message version for pasting into a chat app. */
 export const asPaste = ({ system, user }) => `${system}\n\n${user}`
