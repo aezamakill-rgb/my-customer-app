@@ -1,35 +1,33 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { Suspense, lazy } from 'react'
+import { useRoute } from './lib/store.js'
+import { Toaster } from './components/ui.jsx'
+import Home from './screens/Home.jsx'
 
-function App() {
-  const [count, setCount] = useState(0)
+const Plan = lazy(() => import('./screens/Plan.jsx'))
+const Shoot = lazy(() => import('./screens/Shoot.jsx'))
+const Wrap = lazy(() => import('./screens/Wrap.jsx'))
+const Settings = lazy(() => import('./screens/Settings.jsx'))
+const Guide = lazy(() => import('./screens/Guide.jsx'))
 
+function Screen() {
+  const [a, id, b, c] = useRoute()
+  if (a === 'p' && id) {
+    if (b === 'shoot') return <Shoot id={id} start={Number(c) || 0} />
+    if (b === 'wrap') return <Wrap id={id} />
+    return <Plan id={id} tab={c ?? b} />
+  }
+  if (a === 'settings') return <Settings />
+  if (a === 'guide') return <Guide />
+  return <Home />
+}
+
+export default function App() {
   return (
     <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
+      <Suspense fallback={<div className="empty">กำลังโหลด…</div>}>
+        <Screen />
+      </Suspense>
+      <Toaster />
     </>
   )
 }
-
-export default App
