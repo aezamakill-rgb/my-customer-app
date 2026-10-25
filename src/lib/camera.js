@@ -9,6 +9,27 @@ export function aspectRatio(aspect) {
   return w / h
 }
 
+/**
+ * Part of the camera frame that ends up in the clip when it is fitted to the
+ * project aspect with "cover" (centre crop), as fractions of the frame.
+ */
+export function cropRect(frameRatio, targetRatio) {
+  if (!(frameRatio > 0) || !(targetRatio > 0) || Math.abs(frameRatio - targetRatio) < 0.01) return { x: 0, y: 0, w: 1, h: 1 }
+  if (frameRatio > targetRatio) {
+    const w = targetRatio / frameRatio
+    return { x: (1 - w) / 2, y: 0, w, h: 1 }
+  }
+  const h = frameRatio / targetRatio
+  return { x: 0, y: (1 - h) / 2, w: 1, h }
+}
+
+/** Quick zoom buttons like the phone camera app: ultra-wide, 1x, 2x, 3x. */
+export function zoomStops(zoom) {
+  if (!zoom) return []
+  const stops = [zoom.min < 1 ? zoom.min : null, 1, 2, 3].filter((v) => v !== null && v >= zoom.min - 1e-6 && v <= zoom.max + 1e-6)
+  return stops.length > 1 ? [...new Set(stops.map((v) => Math.round(v * 10) / 10))] : []
+}
+
 export async function listCameras() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices()
@@ -31,18 +52,23 @@ export async function listMics() {
  * Open camera + mic. Portrait projects ask for a portrait frame; phones
  * rotate the sensor for us, desktops fall back to the nearest mode.
  */
-export async function openCamera({ facing = 'user', deviceId, micId, resolution = '1080', fps = 30, aspect = '9:16' }) {
+export async function openCamera({ facing = 'user', deviceId, micId, resolution = '1080', fps = 30 }) {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error('เบราว์เซอร์นี้ไม่รองรับกล้อง หรือไม่ได้เปิดผ่าน https')
   }
   const long = LONG_SIDE[resolution] ?? 1920
-  const short = Math.round((long * 9) / 16)
-  const portrait = aspectRatio(aspect) < 1
+  // Ask for the long side in both directions so the camera picks its best
+  // native mode in whatever orientation it delivers (portrait on a phone held
+  // upright, landscape on a webcam) instead of a cropped one. The project
+  // aspect is applied as a centre crop at edit time (shown in the preview).
   const video = {
     ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: facing } }),
-    width: { ideal: portrait ? short : long },
-    height: { ideal: portrait ? long : short },
+    width: { ideal: long },
+    height: { ideal: long },
     frameRate: { ideal: fps },
+    // Chrome: use the sensor's native frame instead of cropping it to fit the
+    // requested size, so the preview shows the camera's real field of view.
+    resizeMode: 'none',
   }
   const audio = {
     ...(micId && { deviceId: { exact: micId } }),

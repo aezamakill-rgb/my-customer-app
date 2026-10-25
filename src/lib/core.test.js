@@ -160,3 +160,69 @@ describe('AI team', () => {
     expect(directPrompt(p, json).user).toContain(json)
   })
 })
+
+describe('fewer app switches', async () => {
+  const { applyAiResult } = await import('./ai/apply.js')
+  const { teamPrompt, isOwnPrompt, asPaste } = await import('./ai/prompts.js')
+  const answer = JSON.stringify({
+    title: 'บทใหม่',
+    research: 'สรุป: คนชอบหูฟังราคาถูก (แหล่ง: example.com)',
+    hook_options: ['h1'],
+    scenes: [{ title: 'Hook', kind: 'talk', lines: ['บรรทัด'], shot: { size: 'CU', camera: 'front' } }],
+    caption: 'cap',
+    hashtags: ['#a'],
+    notes: ['n'],
+  })
+
+  it('one-shot prompt runs all three roles and asks for research in the JSON', () => {
+    const p = newProject({ topic: 'หูฟัง', targetSeconds: 30 })
+    const text = asPaste(teamPrompt(p))
+    expect(text).toContain('นักรีเสิร์ช')
+    expect(text).toContain('ผู้กำกับ')
+    expect(text).toContain('"research": "สรุปผลรีเสิร์ช')
+    expect(text).toContain('30 วินาที')
+    expect(isOwnPrompt(text)).toBe(true)
+  })
+
+  it('applies a one-shot answer: scenes, research, caption, title', () => {
+    const p = applyAiResult(newProject(), 'oneshot', 'นี่ครับ\n' + answer, { by: 'gemini' })
+    expect(p.scenes).toHaveLength(1)
+    expect(p.research).toContain('หูฟังราคาถูก')
+    expect(p.name).toBe('บทใหม่')
+    expect(p.caption).toBe('cap')
+    expect(p.ai.oneshot.by).toBe('gemini')
+  })
+
+  it('rejects the prompt itself or an empty clipboard', () => {
+    const p = newProject({ topic: 'x' })
+    expect(() => applyAiResult(p, 'oneshot', asPaste(teamPrompt(p)))).toThrow(/prompt/)
+    expect(() => applyAiResult(p, 'write', '   ')).toThrow(/คำตอบ/)
+    expect(() => applyAiResult(p, 'write', 'ข้อความทั่วไป')).toThrow(/JSON/)
+    expect(applyAiResult(p, 'research', 'ผลรีเสิร์ช').research).toBe('ผลรีเสิร์ช')
+  })
+})
+
+describe('camera preview', async () => {
+  const { cropRect, zoomStops } = await import('./camera.js')
+  it('marks the part of the camera frame kept in the clip', () => {
+    // Landscape 16:9 camera, 9:16 project: a centred vertical strip.
+    const c = cropRect(16 / 9, 9 / 16)
+    expect(c.y).toBe(0)
+    expect(c.h).toBe(1)
+    expect(c.w).toBeCloseTo(0.316, 3)
+    expect(c.x).toBeCloseTo((1 - c.w) / 2, 6)
+    // Portrait 3:4 camera, 9:16 project: trim left/right a little.
+    expect(cropRect(3 / 4, 9 / 16).w).toBeCloseTo(0.75, 3)
+    // Portrait 9:16 camera, 1:1 project: a centred square.
+    expect(cropRect(9 / 16, 1)).toMatchObject({ x: 0, w: 1 })
+    expect(cropRect(9 / 16, 1).h).toBeCloseTo(0.5625, 4)
+    expect(cropRect(9 / 16, 9 / 16)).toEqual({ x: 0, y: 0, w: 1, h: 1 })
+    expect(cropRect(0, 1)).toEqual({ x: 0, y: 0, w: 1, h: 1 })
+  })
+  it('offers phone-style zoom buttons within the camera range', () => {
+    expect(zoomStops({ min: 0.5, max: 10 })).toEqual([0.5, 1, 2, 3])
+    expect(zoomStops({ min: 1, max: 2.5 })).toEqual([1, 2])
+    expect(zoomStops({ min: 1, max: 1.5 })).toEqual([])
+    expect(zoomStops(null)).toEqual([])
+  })
+})
