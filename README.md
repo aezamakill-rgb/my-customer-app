@@ -1,16 +1,104 @@
-# React + Vite
+# KinShot — ผู้ช่วยกองถ่ายในกระเป๋า 🎬
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+แอปช่วยถ่ายคอนเทนต์แบบมืออาชีพ ตั้งแต่วางบทจนถ่ายครบทุกฉาก แล้วส่งต่อเข้า **KinCut** ตัดต่อได้ทันที
 
-Currently, two official plugins are available:
+- 🤝 **ทีม AI สามแรง** ช่วยกันทำบท: **Gemini** รีเสิร์ช → **Claude** เขียนบทและ shot list → **ChatGPT** กำกับและขัดบท (สลับบทบาทได้)
+- 🎙 **Teleprompter** บทขึ้นจอด้านบนใกล้เลนส์ เลื่อนเองได้ 3 แบบ: อัตโนมัติตามความเร็วพูด, ตามเสียงพูด, แตะ/รีโมตเอง
+- 🎛 **คุมกล้องแบบโปร** ซูม ความสว่าง โฟกัส/ล็อกโฟกัส แตะเพื่อโฟกัส สมดุลแสงขาว ไฟแฟลช 720p–4K 24/30/60fps เลือกเลนส์/ไมค์ภายนอก เส้นกริด ตัววัดระดับ กรอบพื้นที่ปลอดภัย มิเตอร์เสียง นับถอยหลัง
+- 🎞 **ถ่ายทีละฉากจนจบ** มีคำสั่งช็อตทุกฉาก ดูเทคทันทีหลังอัด เลือกเทคที่ดีที่สุด แอปพาไปฉากถัดไปให้เอง
+- ✂️ **ส่งเข้า KinCut** สร้างโปรเจคใหม่ที่เรียงคลิปตามฉาก พร้อมซับร่างจากบทพูด
+- 📦 ส่งออกให้ CapCut / Premiere / DaVinci / Final Cut (ไฟล์เรียง 01_, 02_ + ซับ .srt + บทถ่ายทำ) และ**แบ็กอัปทั้งโปรเจค**
+- 📱 ใช้ได้ทุกอุปกรณ์: iPhone, iPad, Android, Windows, Mac (PWA ติดตั้งได้ ใช้งานออฟไลน์ได้ยกเว้นส่วน AI)
+- 🔒 วิดีโอเก็บในเครื่องเท่านั้น ไม่มีการอัปโหลด
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## React Compiler
+## วิธีใช้งาน
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 0. ติดตั้ง (ครั้งแรกครั้งเดียว)
+| อุปกรณ์ | วิธี |
+|---|---|
+| iPhone / iPad | เปิดลิงก์ใน **Safari** → ปุ่มแชร์ → **เพิ่มไปยังหน้าจอโฮม** |
+| Android | เปิดใน **Chrome** → เมนู ⋮ → **ติดตั้งแอป** (หรือกดปุ่ม “ติดตั้งแอป” ในหน้าแรก) |
+| Windows / Mac | เปิดใน **Chrome** หรือ **Edge** → ไอคอนติดตั้งในช่อง URL |
 
-## Expanding the ESLint configuration
+ครั้งแรกที่เข้าหน้าถ่าย ให้กด **อนุญาต** กล้องและไมโครโฟน
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### 1. บรีฟ
+1. หน้าแรก → **+ เริ่มคอนเทนต์ใหม่** → ใส่หัวข้อ เลือกแพลตฟอร์ม (กำหนดสัดส่วนภาพและความยาวให้อัตโนมัติ)
+2. เลือก **ให้ทีม AI เขียนบท** หรือโครงสำเร็จรูป 6 แบบที่ไม่ต้องใช้ AI: รีวิวสินค้า · สอน/How-to · Vlog · เล่าเรื่อง · รีวิวอาหาร · ขายของ
+3. แท็บ **📝 บรีฟ** ใส่กลุ่มเป้าหมาย โทน เป้าหมาย ราคา/จุดเด่น ยิ่งละเอียด บทยิ่งตรง
+
+### 2. ทีม AI วางบท (แท็บ 🤝 ทีม AI)
+มี 2 โหมด:
+
+**คัดลอก/วาง (ฟรี ใช้แอป AI ในมือถือ)**
+1. ขั้น 1 🔎 นักรีเสิร์ช: กด **📋 คัดลอก prompt** → **เปิด Gemini** → วาง → คัดลอกคำตอบทั้งหมดกลับมาวาง → **บันทึกผลรีเสิร์ช**
+2. ขั้น 2 ✍️ นักเขียนบท: ทำแบบเดียวกันกับ **Claude** → **ใช้บทนี้**
+3. ขั้น 3 🎬 ผู้กำกับ: ทำแบบเดียวกันกับ **ChatGPT** → **ใช้บทนี้** (บทจะถูกขัดให้คมขึ้น)
+
+**API อัตโนมัติ**
+1. ⚙️ ตั้งค่า → ใส่ API key ([Claude](https://platform.claude.com/settings/keys) · [OpenAI](https://platform.openai.com/api-keys) · [Gemini](https://aistudio.google.com/app/apikey)) แล้วกด **ทดสอบ**
+2. กด **🚀 ให้ทีม AI ทำครบ 3 ขั้นอัตโนมัติ** — มี key เจ้าเดียวก็ได้ ระบบให้ AI ตัวนั้นรับทุกบทบาท
+3. รุ่นโมเดล: Claude ใช้ `claude-opus-5-5` เป็นค่าเริ่มต้น ส่วน GPT/Gemini เว้นว่างไว้แอปจะเลือกรุ่นล่าสุดจากบัญชีให้เอง (พิมพ์ชื่อรุ่นเองได้)
+
+> Gemini รีเสิร์ชด้วย Google Search (grounding) และแสดงแหล่งอ้างอิง ถ้าให้ Claude รับบทรีเสิร์ช จะใช้ web search ของ Claude แทน
+> API key เก็บในเบราว์เซอร์เครื่องนั้นเท่านั้นและส่งตรงไปยังผู้ให้บริการ อย่าใส่บนเครื่องสาธารณะ
+
+จากนั้นแก้บทได้ในแท็บ **🎞 บท & ช็อต**: บทพูด (1 บรรทัด = 1 ลมหายใจ), ขนาดช็อต, มุมกล้อง, การเคลื่อนกล้อง, กล้องหน้า/หลัง, คำสั่งผู้กำกับ แอปคำนวณเวลาพูดเทียบกับเป้าหมาย และมีปุ่มเลือก hook ทางเลือกจาก AI
+
+### 3. ถ่ายทำ
+1. แท็บ **✅ ก่อนถ่าย** ไล่เช็กลิสต์ (แบต แสง เสียง เลนส์ พื้นที่)
+2. กด **🎥 เริ่มถ่าย** — แอปเปิดกล้องหน้า/หลังตามบท แสดงคำสั่งช็อตด้านล่าง
+3. บรรทัด**สีเหลือง**คือบรรทัดที่ต้องพูด มองเลนส์ไว้ กด **ซ้อม** เพื่อลองก่อนอัด
+4. กดปุ่มแดงเพื่ออัด → หลังหยุดจะเล่นเทคให้ดู: **✓ ใช้เทคนี้** (ไปฉากถัดไปอัตโนมัติ) · **↻ อัดอีกเทค** · **✗ ทิ้ง**
+5. ปุ่ม **🎛** คุมกล้องและบท: กล้อง/ไมค์ ความละเอียด เฟรมเรต ซูม ความสว่าง โฟกัส สมดุลแสงขาว โหมดเลื่อนบท ความเร็ว ขนาดตัวอักษร กลับด้านบท (กระจก teleprompter) และตัวช่วยบนจอ
+6. ฉาก B-roll หยุดอัดให้เองเมื่อครบเวลา
+7. คีย์บอร์ด/รีโมตบลูทูธ/pedal: `Space`/`Enter` อัด-หยุด · `↓`/`PageDown` บรรทัดถัดไป · `↑`/`PageUp` ย้อน · `+`/`−` ความเร็ว
+
+> ตัวเลือกกล้องจะขึ้นตามที่เครื่องรองรับ: Android Chrome คุมได้เกือบครบ, iPhone และเว็บแคมบางรุ่นปรับได้น้อยกว่า (แตะเพื่อโฟกัส/สลับเลนส์ยังใช้ได้)
+
+### 4. ตรวจเทค & ส่งตัดต่อ
+1. แตะเทคเพื่อดู → **⭐ เทคที่ใช้** ของแต่ละฉาก
+2. **ส่งเข้า KinCut** → **เปิด KinCut** โปรเจคจะอยู่หน้าแรก คลิปเรียงตามฉากพร้อมซับร่าง ใส่เพลง ฟิลเตอร์ ซับอัตโนมัติ และ AI director ต่อได้เลย
+3. ใช้แอปอื่น: **📤 แชร์/บันทึกลงเครื่อง** (มือถือ) · **📁 บันทึกลงโฟลเดอร์** (คอม) · **⬇️ ZIP**
+4. **💾 แบ็กอัป** เก็บบทและทุกเทคเป็นไฟล์เดียว ย้ายเครื่องด้วย **กู้คืน** ที่หน้าแรก
+5. คัดลอกแคปชันและแฮชแท็กที่ AI เตรียมไว้ไปโพสต์ได้
+
+---
+
+## การเชื่อมกับ KinCut
+KinCut เก็บโปรเจคไว้ใน Origin Private File System ของเบราว์เซอร์ (`projects/<id>.json` + `media/<id>/<file>`) ซึ่งแชร์กันได้เฉพาะเว็บที่อยู่ origin เดียวกัน
+เมื่อ KinShot เปิดจาก `https://aezamakill-rgb.github.io/...` (origin เดียวกับ KinCut) ปุ่ม **ส่งเข้า KinCut** จะเขียนโปรเจคเข้า KinCut โดยตรง
+ถ้าเปิดจากที่อื่น แอปจะให้ดาวน์โหลดคลิปที่เรียงลำดับแล้วไปกด “เพิ่มวิดีโอ” ใน KinCut แทน
+
+## เผยแพร่ (GitHub Pages)
+1. Merge เข้า `main`
+2. GitHub repo → **Settings → Pages → Source: GitHub Actions** (ตั้งครั้งเดียว)
+3. workflow `Deploy KinShot to GitHub Pages` จะ build และเผยแพร่ที่ `https://aezamakill-rgb.github.io/my-customer-app/`
+   (ถ้าเปลี่ยนชื่อ repo เป็น `kinshot` ลิงก์จะกลายเป็น `.../kinshot/` ได้เลย เพราะแอปใช้ path แบบ relative)
+
+## สำหรับนักพัฒนา
+```bash
+npm install
+npm run dev        # เปิดที่ http://localhost:5173 (ใช้กล้องได้บน localhost/https เท่านั้น)
+npm run lint
+npm test           # unit tests (vitest)
+npm run build
+npm run e2e        # ทดสอบครบวงจรด้วยกล้องจำลอง: วางบท → อัด 2 เทค → ส่งเข้า KinCut → เปิด KinCut
+                   # (ต้องมี Playwright และ build ของ KinCut อยู่ที่ ../kincut)
+```
+
+โครงสร้าง
+```
+src/lib/model.js        โมเดลโปรเจค ฉาก เทค และการคำนวณเวลาพูดภาษาไทย
+src/lib/ai/             prompt ของทีม AI, การเรียก Claude (Anthropic SDK) / OpenAI / Gemini, ตัวอ่าน JSON
+src/lib/camera.js       เปิดกล้อง + capability (zoom, torch, focus, exposure, white balance)
+src/lib/recorder.js     MediaRecorder (MP4 H.264 ก่อน, WebM สำรอง) + อ่านความยาวด้วย mediabunny
+src/lib/follow.js       teleprompter ตามเสียง (Web Speech API)
+src/lib/kincut.js       สร้างโปรเจค KinCut และเขียนลง OPFS
+src/lib/export.js       ZIP, SRT, บทถ่ายทำ, แชร์, แบ็กอัป/กู้คืน
+src/screens/            หน้าแรก · วางบท · ถ่าย · ตรวจเทค · ตั้งค่า · วิธีใช้
+```
+
+สร้างโดยทีม AI สามแรง: Claude · GPT · Gemini
